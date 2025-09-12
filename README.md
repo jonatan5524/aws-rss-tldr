@@ -22,7 +22,7 @@ A serverless AWS Lambda function that fetches AWS news RSS feed daily, summarize
 ### 1. Clone Repository
 
 ```bash
-git clone <your-repo-url>
+git clone <repo-url>
 cd aws-rss-tldr
 ```
 
@@ -94,7 +94,7 @@ terraform apply tfplan
 
 ### Schedule
 
-The Lambda runs daily at 05:20 UTC (configurable in `main.tf`).
+The Lambda runs daily at 08:20 UTC+3 (configurable in `main.tf`).
 
 ## Cost
 
@@ -106,9 +106,3 @@ Designed to operate within AWS Free Tier:
 - **Gemini**: 1,500 free requests/day
 - **Telegram**: Completely free
 
-## Security
-
-- ✅ No secrets in code
-- ✅ Encrypted storage (AWS SSM)
-- ✅ Minimal IAM permissions
-- ✅ No hardcoded credentials
