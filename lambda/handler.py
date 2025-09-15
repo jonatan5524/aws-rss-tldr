@@ -18,14 +18,109 @@ SSM_TELEGRAM_CHAT_ID = os.environ["SSM_TELEGRAM_CHAT_ID"]
 GEMINI_MODEL = os.environ["GEMINI_MODEL"]
 
 
+def send_to_telegram(summary: str):
+    try:
+        telegram_token = get_secret(SSM_TELEGRAM_TOKEN)
+        chat_id = get_secret(SSM_TELEGRAM_CHAT_ID)
+
+        # Prepare message with proper length handling
+        msg_header = "📰 AWS Daily News:\n\n"
+        msg_content = summary
+        
+        # Telegram limit is 4096 characters
+        max_content_length = 4096 - len(msg_header) - 50  # Leave some buffer
+        
+        telegram_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+        
+        if len(msg_content) <= max_content_length:
+            # Message fits in one part
+            final_msg = msg_header + msg_content
+            logger.info(f"Sending single message of {len(final_msg)} characters")
+            
+            resp = requests.post(
+                telegram_url,
+                json={
+                    "chat_id": chat_id, 
+                    "text": final_msg,
+                    "parse_mode": "Markdown",
+                    "disable_web_page_preview": True
+                },
+                timeout=30
+            )
+            if resp.status_code != 200:
+                logger.error(f"Telegram API response: {resp.text}")
+                raise RuntimeError(f"Telegram API error {resp.status_code}: {resp.text}")
+        else:
+            # Message needs to be split into multiple parts
+            parts = []
+            remaining_content = msg_content
+            part_num = 1
+            
+            while remaining_content:
+                if part_num == 1:
+                    # First part includes the header
+                    available_space = max_content_length
+                    part_header = msg_header
+                else:
+                    # Subsequent parts have continuation header
+                    part_header = f"📰 AWS Daily News (Part {part_num}):\n\n"
+                    available_space = 4096 - len(part_header) - 50
+                
+                if len(remaining_content) <= available_space:
+                    # Last part
+                    parts.append(part_header + remaining_content)
+                    break
+                else:
+                    # Find a good break point (preferably at line break)
+                    cut_point = remaining_content[:available_space].rfind('\n')
+                    if cut_point == -1:  # No line break found, cut at space
+                        cut_point = remaining_content[:available_space].rfind(' ')
+                    if cut_point == -1:  # No space found, hard cut
+                        cut_point = available_space
+                    
+                    parts.append(part_header + remaining_content[:cut_point])
+                    remaining_content = remaining_content[cut_point:].lstrip()
+                    part_num += 1
+            
+            logger.info(f"Splitting message into {len(parts)} parts")
+            
+            # Send each part
+            for i, part in enumerate(parts, 1):
+                logger.info(f"Sending part {i}/{len(parts)} ({len(part)} characters)")
+                
+                resp = requests.post(
+                    telegram_url,
+                    json={
+                        "chat_id": chat_id, 
+                        "text": part,
+                        "parse_mode": "Markdown",
+                        "disable_web_page_preview": True
+                    },
+                    timeout=30
+                )
+                if resp.status_code != 200:
+                    logger.error(f"Telegram API response for part {i}: {resp.text}")
+                    raise RuntimeError(f"Telegram API error {resp.status_code} on part {i}: {resp.text}")
+                
+                # Small delay between messages to avoid rate limiting
+                import time
+                if i < len(parts):  # Don't delay after the last message
+                    time.sleep(1)
+                    
+    except Exception as e:
+        logger.error(f"Failed to send Telegram message: {e}")
+        return {"statusCode": 500, "body": "Telegram send error"}
+
+    # --- Success
+    logger.info("Message sent successfully")
+    return {"statusCode": 200, "body": "Success"}
+
+
 def get_secret(name):
     return ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
 
 def lambda_handler(event, context):
     try:
-        # --- Load secrets
-        telegram_token = get_secret(SSM_TELEGRAM_TOKEN)
-        chat_id = get_secret(SSM_TELEGRAM_CHAT_ID)
 
         # --- Step 1: Fetch AWS News RSS
         
@@ -54,7 +149,7 @@ def lambda_handler(event, context):
         
         if not rss_links:
             logger.info("No AWS news found in the past 24 hours")
-            return {"statusCode": 200, "body": "No new content"}
+            return send_to_telegram(summary)
 
         # --- Step 2: Summarize with Gemini
         try:
@@ -101,99 +196,8 @@ a structured TLDR summary for each one.
             return {"statusCode": 500, "body": "Gemini error"}
 
         # --- Step 3: Send to Telegram
-        try:
-            # Prepare message with proper length handling
-            msg_header = "📰 AWS Daily News:\n\n"
-            msg_content = summary
-            
-            # Telegram limit is 4096 characters
-            max_content_length = 4096 - len(msg_header) - 50  # Leave some buffer
-            
-            telegram_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
-            
-            if len(msg_content) <= max_content_length:
-                # Message fits in one part
-                final_msg = msg_header + msg_content
-                logger.info(f"Sending single message of {len(final_msg)} characters")
-                
-                resp = requests.post(
-                    telegram_url,
-                    json={
-                        "chat_id": chat_id, 
-                        "text": final_msg,
-                        "parse_mode": "Markdown",
-                        "disable_web_page_preview": True
-                    },
-                    timeout=30
-                )
-                if resp.status_code != 200:
-                    logger.error(f"Telegram API response: {resp.text}")
-                    raise RuntimeError(f"Telegram API error {resp.status_code}: {resp.text}")
-            else:
-                # Message needs to be split into multiple parts
-                parts = []
-                remaining_content = msg_content
-                part_num = 1
-                
-                while remaining_content:
-                    if part_num == 1:
-                        # First part includes the header
-                        available_space = max_content_length
-                        part_header = msg_header
-                    else:
-                        # Subsequent parts have continuation header
-                        part_header = f"📰 AWS Daily News (Part {part_num}):\n\n"
-                        available_space = 4096 - len(part_header) - 50
-                    
-                    if len(remaining_content) <= available_space:
-                        # Last part
-                        parts.append(part_header + remaining_content)
-                        break
-                    else:
-                        # Find a good break point (preferably at line break)
-                        cut_point = remaining_content[:available_space].rfind('\n')
-                        if cut_point == -1:  # No line break found, cut at space
-                            cut_point = remaining_content[:available_space].rfind(' ')
-                        if cut_point == -1:  # No space found, hard cut
-                            cut_point = available_space
-                        
-                        parts.append(part_header + remaining_content[:cut_point])
-                        remaining_content = remaining_content[cut_point:].lstrip()
-                        part_num += 1
-                
-                logger.info(f"Splitting message into {len(parts)} parts")
-                
-                # Send each part
-                for i, part in enumerate(parts, 1):
-                    logger.info(f"Sending part {i}/{len(parts)} ({len(part)} characters)")
-                    
-                    resp = requests.post(
-                        telegram_url,
-                        json={
-                            "chat_id": chat_id, 
-                            "text": part,
-                            "parse_mode": "Markdown",
-                            "disable_web_page_preview": True
-                        },
-                        timeout=30
-                    )
-                    if resp.status_code != 200:
-                        logger.error(f"Telegram API response for part {i}: {resp.text}")
-                        raise RuntimeError(f"Telegram API error {resp.status_code} on part {i}: {resp.text}")
-                    
-                    # Small delay between messages to avoid rate limiting
-                    import time
-                    if i < len(parts):  # Don't delay after the last message
-                        time.sleep(1)
-                        
-        except Exception as e:
-            logger.error(f"Failed to send Telegram message: {e}")
-            return {"statusCode": 500, "body": "Telegram send error"}
-
-        # --- Success
-        logger.info("Message sent successfully")
-        return {"statusCode": 200, "body": "Success"}
-
+        return send_to_telegram(summary)
+        
     except Exception as e:
         logger.exception(f"Unhandled error: {e}")
         return {"statusCode": 500, "body": "Internal error"}
