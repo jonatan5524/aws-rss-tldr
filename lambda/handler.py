@@ -149,7 +149,7 @@ def lambda_handler(event, context):
         
         if not rss_links:
             logger.info("No AWS news found in the past 24 hours")
-            return send_to_telegram(summary)
+            return send_to_telegram("No AWS news found in the past 24 hours")
 
         # --- Step 2: Summarize with Gemini
         try:
@@ -173,7 +173,7 @@ a structured TLDR summary for each one.
 ---
 🌐 [Service / Feature Name] – [Short Title]  
 - 🚀 **What's New?** → Summarize the new announcement.  
-- 📅 **When:** Date of the announcement.  
+- 🏗️ **Service Overview:** Brief explanation of what this AWS service does and its primary use cases.
 - ⏳ **Before:** What was possible/limited before.  
 - 🔄 **Now:** What changed.  
 - 💡 **Why It Matters:** Why this update is useful in real-world AWS architecture, governance, or operations.  
