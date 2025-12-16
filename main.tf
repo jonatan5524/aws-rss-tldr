@@ -25,7 +25,7 @@ data "aws_caller_identity" "current" {}
 
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${local.lambda_name}"
-  retention_in_days = 14
+  retention_in_days = 3
 }
 
 resource "aws_iam_role" "lambda_role" {
