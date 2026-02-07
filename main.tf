@@ -19,6 +19,11 @@ provider "aws" {
 locals {
   lambda_name = "${var.project_name}-lambda"
   rss_url     = "https://aws.amazon.com/about-aws/whats-new/recent/feed/"
+  package_hash = md5(join("", [
+    filemd5("${path.module}/lambda/handler.py"),
+    filemd5("${path.module}/lambda/requirements.txt")
+  ]))
+  archive_path = "${path.module}/lambda_build/lambda_package_${local.package_hash}.zip"
 }
 
 data "aws_caller_identity" "current" {}
@@ -86,8 +91,7 @@ resource "aws_iam_role_policy_attachment" "attach" {
 resource "null_resource" "build_lambda" {
   # Trigger rebuild if handler.py or requirements.txt changes
   triggers = {
-    handler     = filemd5("${path.module}/lambda/handler.py")
-    requirements = filemd5("${path.module}/lambda/requirements.txt")
+    package_hash = local.package_hash
   }
 	
   provisioner "local-exec" {
@@ -100,7 +104,7 @@ resource "null_resource" "build_lambda" {
 			cp lambda/*.py lambda_build/"
 
 			cd lambda_build 
-			zip -r lambda_package.zip .
+			zip -r lambda_package_${local.package_hash}.zip .
 			cd -
     EOT
     interpreter = ["/bin/bash", "-c"]
@@ -112,7 +116,7 @@ resource "aws_lambda_function" "fn" {
   role          = aws_iam_role.lambda_role.arn
   handler       = "handler.lambda_handler"
   runtime       = "python3.12"
-  filename      = "${path.module}/lambda_build/lambda_package.zip"
+  filename      = local.archive_path
   timeout       = 60
   memory_size   = 256
 
