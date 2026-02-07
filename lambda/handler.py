@@ -32,24 +32,45 @@ def send_to_telegram(summary: str):
         
         telegram_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
         
+        def send_chunk(text, retry_without_markdown=True):
+            try:
+                resp = requests.post(
+                    telegram_url,
+                    json={
+                        "chat_id": chat_id, 
+                        "text": text,
+                        "parse_mode": "Markdown",
+                        "disable_web_page_preview": True
+                    },
+                    timeout=30
+                )
+                
+                # If Markdown parsing fails (Status 400), retry without it
+                if resp.status_code == 400 and retry_without_markdown:
+                    logger.warning(f"Telegram Markdown failed, retrying raw. Error: {resp.text}")
+                    resp = requests.post(
+                        telegram_url,
+                        json={
+                            "chat_id": chat_id, 
+                            "text": text,
+                            # parse_mode omitted
+                            "disable_web_page_preview": True
+                        },
+                        timeout=30
+                    )
+
+                if resp.status_code != 200:
+                    logger.error(f"Telegram API response: {resp.text}")
+                    # Don't raise immediately on 400 if retried? No, if the retry failed too, or if status != 200
+                    raise RuntimeError(f"Telegram API error {resp.status_code}: {resp.text}")
+            except Exception as e:
+                raise e
+
         if len(msg_content) <= max_content_length:
             # Message fits in one part
             final_msg = msg_header + msg_content
             logger.info(f"Sending single message of {len(final_msg)} characters")
-            
-            resp = requests.post(
-                telegram_url,
-                json={
-                    "chat_id": chat_id, 
-                    "text": final_msg,
-                    "parse_mode": "Markdown",
-                    "disable_web_page_preview": True
-                },
-                timeout=30
-            )
-            if resp.status_code != 200:
-                logger.error(f"Telegram API response: {resp.text}")
-                raise RuntimeError(f"Telegram API error {resp.status_code}: {resp.text}")
+            send_chunk(final_msg)
         else:
             # Message needs to be split into multiple parts
             parts = []
@@ -71,11 +92,26 @@ def send_to_telegram(summary: str):
                     parts.append(part_header + remaining_content)
                     break
                 else:
-                    # Find a good break point (preferably at line break)
-                    cut_point = remaining_content[:available_space].rfind('\n')
-                    if cut_point == -1:  # No line break found, cut at space
-                        cut_point = remaining_content[:available_space].rfind(' ')
-                    if cut_point == -1:  # No space found, hard cut
+                    # Search window
+                    search_text = remaining_content[:available_space]
+                    
+                    # 1. Try to split at article delimiter "---"
+                    cut_point = search_text.rfind('\n---')
+                    
+                    # 2. Fallback to double newline (paragraph break)
+                    if cut_point == -1:
+                        cut_point = search_text.rfind('\n\n')
+                        
+                    # 3. Fallback to single newline
+                    if cut_point == -1:
+                        cut_point = search_text.rfind('\n')
+                        
+                    # 4. Fallback to space
+                    if cut_point == -1:
+                        cut_point = search_text.rfind(' ')
+                        
+                    # 5. Hard cut
+                    if cut_point == -1:
                         cut_point = available_space
                     
                     parts.append(part_header + remaining_content[:cut_point])
@@ -87,20 +123,7 @@ def send_to_telegram(summary: str):
             # Send each part
             for i, part in enumerate(parts, 1):
                 logger.info(f"Sending part {i}/{len(parts)} ({len(part)} characters)")
-                
-                resp = requests.post(
-                    telegram_url,
-                    json={
-                        "chat_id": chat_id, 
-                        "text": part,
-                        "parse_mode": "Markdown",
-                        "disable_web_page_preview": True
-                    },
-                    timeout=30
-                )
-                if resp.status_code != 200:
-                    logger.error(f"Telegram API response for part {i}: {resp.text}")
-                    raise RuntimeError(f"Telegram API error {resp.status_code} on part {i}: {resp.text}")
+                send_chunk(part)
                 
                 # Small delay between messages to avoid rate limiting
                 import time
@@ -178,7 +201,7 @@ a structured TLDR summary for each one.
 - 🔄 **Now:** What changed.  
 - 💡 **Why It Matters:** Why this update is useful in real-world AWS architecture, governance, or operations.  
 - 👥 **Impact:** Who benefits (e.g., enterprises, devs, security teams).  
-- 🔗 **Link:** URL of the news article
+- 🔗 **Link:** [Read Announcement](URL of the news article)
 ---
 
 ⚠️ Rules:
