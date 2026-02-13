@@ -38,26 +38,26 @@ resource "aws_iam_role" "lambda_role" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "lambda.amazonaws.com" }
-      Action   = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
     }]
   })
 }
 
 resource "aws_iam_policy" "lambda_policy" {
-  name   = "${var.project_name}-lambda-policy"
+  name = "${var.project_name}-lambda-policy"
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["logs:CreateLogStream","logs:PutLogEvents"]
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
         Resource = "arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.lambda_name}:*"
       },
       {
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameter"]
+        Effect = "Allow"
+        Action = ["ssm:GetParameter"]
         Resource = [
           "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.ssm_gemini_api_key_name}",
           "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.ssm_telegram_bot_token}",
@@ -72,9 +72,9 @@ resource "aws_iam_policy" "lambda_policy" {
           "ForAnyValue:StringEquals" = { "kms:ViaService" = "ssm.${var.region}.amazonaws.com" }
         }
       },
-			{
-        Effect = "Allow",
-        Action = ["kms:Decrypt"],
+      {
+        Effect   = "Allow",
+        Action   = ["kms:Decrypt"],
         Resource = "arn:aws:kms:${var.region}:${data.aws_caller_identity.current.account_id}:alias/aws/lambda"
       }
     ]
@@ -93,9 +93,9 @@ resource "null_resource" "build_lambda" {
   triggers = {
     package_hash = local.package_hash
   }
-	
+
   provisioner "local-exec" {
-    command = <<EOT
+    command     = <<EOT
 			docker run --rm --entrypoint /bin/bash -u $(id -u):$(id -g) -v "$PWD":/app -w /app public.ecr.aws/lambda/python:3.12 \
 			-c "
 			rm -rf lambda_build &&
@@ -103,7 +103,7 @@ resource "null_resource" "build_lambda" {
 			pip install -r lambda/requirements.txt -t lambda_build --upgrade &&
 			cp lambda/*.py lambda_build/"
 
-			cd lambda_build 
+			cd lambda_build
 			zip -r lambda_package_${local.package_hash}.zip .
 			cd -
     EOT
@@ -122,11 +122,11 @@ resource "aws_lambda_function" "fn" {
 
   environment {
     variables = {
-      RSS_URL                     = local.rss_url
-      GEMINI_MODEL                = var.gemini_model
-      SSM_GEMINI_API_KEY_NAME     = var.ssm_gemini_api_key_name
-      SSM_TELEGRAM_BOT_TOKEN 			= var.ssm_telegram_bot_token
-			SSM_TELEGRAM_CHAT_ID        = var.ssm_telegram_chat_id
+      RSS_URL                 = local.rss_url
+      GEMINI_MODEL            = var.gemini_model
+      SSM_GEMINI_API_KEY_NAME = var.ssm_gemini_api_key_name
+      SSM_TELEGRAM_BOT_TOKEN  = var.ssm_telegram_bot_token
+      SSM_TELEGRAM_CHAT_ID    = var.ssm_telegram_chat_id
     }
   }
 

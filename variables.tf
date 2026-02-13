@@ -9,13 +9,13 @@ variable "region" {
 }
 
 variable "ssm_telegram_bot_token" {
-	type    = string
-	default = "telegram_bot_token"
+  type    = string
+  default = "telegram_bot_token"
 }
 
 variable "ssm_telegram_chat_id" {
-	type    = string
-	default = "telegram_chat_id"
+  type    = string
+  default = "telegram_chat_id"
 }
 
 variable "ssm_gemini_api_key_name" {
