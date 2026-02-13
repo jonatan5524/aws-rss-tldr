@@ -26,32 +26,32 @@ def send_to_telegram(summary: str):
         # Prepare message with proper length handling
         msg_header = "📰 AWS Daily News:\n\n"
         msg_content = summary
-        
+
         # Telegram limit is 4096 characters
         max_content_length = 4096 - len(msg_header) - 50  # Leave some buffer
-        
+
         telegram_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
-        
+
         def send_chunk(text, retry_without_markdown=True):
             try:
                 resp = requests.post(
                     telegram_url,
                     json={
-                        "chat_id": chat_id, 
+                        "chat_id": chat_id,
                         "text": text,
                         "parse_mode": "Markdown",
                         "disable_web_page_preview": True
                     },
                     timeout=30
                 )
-                
+
                 # If Markdown parsing fails (Status 400), retry without it
                 if resp.status_code == 400 and retry_without_markdown:
                     logger.warning(f"Telegram Markdown failed, retrying raw. Error: {resp.text}")
                     resp = requests.post(
                         telegram_url,
                         json={
-                            "chat_id": chat_id, 
+                            "chat_id": chat_id,
                             "text": text,
                             # parse_mode omitted
                             "disable_web_page_preview": True
@@ -76,7 +76,7 @@ def send_to_telegram(summary: str):
             parts = []
             remaining_content = msg_content
             part_num = 1
-            
+
             while remaining_content:
                 if part_num == 1:
                     # First part includes the header
@@ -86,7 +86,7 @@ def send_to_telegram(summary: str):
                     # Subsequent parts have continuation header
                     part_header = f"📰 AWS Daily News (Part {part_num}):\n\n"
                     available_space = 4096 - len(part_header) - 50
-                
+
                 if len(remaining_content) <= available_space:
                     # Last part
                     parts.append(part_header + remaining_content)
@@ -94,42 +94,42 @@ def send_to_telegram(summary: str):
                 else:
                     # Search window
                     search_text = remaining_content[:available_space]
-                    
+
                     # 1. Try to split at article delimiter "---"
                     cut_point = search_text.rfind('\n---')
-                    
+
                     # 2. Fallback to double newline (paragraph break)
                     if cut_point == -1:
                         cut_point = search_text.rfind('\n\n')
-                        
+
                     # 3. Fallback to single newline
                     if cut_point == -1:
                         cut_point = search_text.rfind('\n')
-                        
+
                     # 4. Fallback to space
                     if cut_point == -1:
                         cut_point = search_text.rfind(' ')
-                        
+
                     # 5. Hard cut
                     if cut_point == -1:
                         cut_point = available_space
-                    
+
                     parts.append(part_header + remaining_content[:cut_point])
                     remaining_content = remaining_content[cut_point:].lstrip()
                     part_num += 1
-            
+
             logger.info(f"Splitting message into {len(parts)} parts")
-            
+
             # Send each part
             for i, part in enumerate(parts, 1):
                 logger.info(f"Sending part {i}/{len(parts)} ({len(part)} characters)")
                 send_chunk(part)
-                
+
                 # Small delay between messages to avoid rate limiting
                 import time
                 if i < len(parts):  # Don't delay after the last message
                     time.sleep(1)
-                    
+
     except Exception as e:
         logger.error(f"Failed to send Telegram message: {e}")
         return {"statusCode": 500, "body": "Telegram send error"}
@@ -146,7 +146,7 @@ def lambda_handler(event, context):
     try:
 
         # --- Step 1: Fetch AWS News RSS
-        
+
         rss_url = "https://aws.amazon.com/about-aws/whats-new/recent/feed/"
         try:
             feed = feedparser.parse(rss_url)
@@ -160,7 +160,7 @@ def lambda_handler(event, context):
         now = datetime.now()
         past_24h = now - timedelta(hours=24)
         rss_links = []
-        
+
         for entry in feed.entries:
             # Parse the published date
             if hasattr(entry, 'published_parsed') and entry.published_parsed:
@@ -169,7 +169,7 @@ def lambda_handler(event, context):
                     link = entry.get("link", "")
                     if link:
                         rss_links.append(link)
-        
+
         if not rss_links:
             logger.info("No AWS news found in the past 24 hours")
             return send_to_telegram("No AWS news found in the past 24 hours")
@@ -179,39 +179,39 @@ def lambda_handler(event, context):
             # Configure Gemini
             genai.configure(api_key=get_secret(SSM_GEMINI_API_KEY))
             model = genai.GenerativeModel(GEMINI_MODEL)
-            
+
             aws_news_prompt = """
-You are my AWS news assistant. I will paste AWS RSS news links, and you will return
+You are an expert AWS news assistant. I will provide AWS RSS news links, and you will return
 a structured TLDR summary for each one.
 
-🎯 Background about me (to tailor explanations):
-- I'm an AWS Landing Zone platform manager 👨‍💻, so I care about multi-account governance, networking, security, IAM, and operations.
-- I'm training to become a strong AWS Solutions Architect 🌍, so I want to understand tradeoffs, design patterns, and how new services/features affect architecture.
-- I follow AWS announcements daily 📢, so skip fluff and focus on what *really* changes.
-- I like answers that are concise but insightful — short TLDRs with enough depth to take action.
-- I enjoy visually clear, structured explanations with emojis ✅.
+🎯 Audience Context:
+- The audience consists of AWS developers, architects, and operations engineers.
+- They care about technical details, architectural impacts, and practical utility.
+- Skip marketing fluff and focus on what *really* changes technically.
+- Provide answers that are concise but insightful — short TLDRs with enough depth to take action.
+- Use visually clear, structured explanations with emojis ✅.
 
 📝 For each AWS news link, explain in this structure:
 
 ---
-🌐 [Service / Feature Name] – [Short Title]  
-- 🚀 **What's New?** → Summarize the new announcement.  
+🌐 [Service / Feature Name] – [Short Title]
+- 🚀 **What's New?** → Summarize the new announcement.
 - 🏗️ **Service Overview:** Brief explanation of what this AWS service does and its primary use cases.
-- ⏳ **Before:** What was possible/limited before.  
-- 🔄 **Now:** What changed.  
-- 💡 **Why It Matters:** Why this update is useful in real-world AWS architecture, governance, or operations.  
-- 👥 **Impact:** Who benefits (e.g., enterprises, devs, security teams).  
-- 🔗 **Link:** [Read Announcement](URL of the news article)
+- ⏳ **Before:** What was possible/limited before.
+- 🔄 **Now:** What changed.
+- 💡 **Why It Matters:** Why this update is useful in real-world AWS architecture, development, or operations.
+- 👥 **Impact:** Who benefits (e.g., enterprises, devs, security teams).
+- 🔗 **Link:** URL of the news article
 ---
 
 ⚠️ Rules:
 - Only summarize AWS news from the provided links.
-- Always include emojis and nice formatting to make it easy to scan.  
-- Keep it professional but approachable.  
-- Assume I want to quickly understand how this affects AWS Landing Zone operations and broader Solutions Architect responsibilities.  
-- Don't just copy AWS marketing text — give me a *useful TLDR*.  
+- Always include emojis and nice formatting to make it easy to scan.
+- Keep it professional and technical.
+- Assume the reader wants to quickly understand how this affects their AWS environments and applications.
+- Don't just copy AWS marketing text — provide a *useful technical TLDR*.
 """
-            
+
             response = model.generate_content(aws_news_prompt + "\n\nHere are the news links:\n" + "\n".join(rss_links))
             summary = response.text
         except Exception as e:
@@ -220,7 +220,7 @@ a structured TLDR summary for each one.
 
         # --- Step 3: Send to Telegram
         return send_to_telegram(summary)
-        
+
     except Exception as e:
         logger.exception(f"Unhandled error: {e}")
         return {"statusCode": 500, "body": "Internal error"}
