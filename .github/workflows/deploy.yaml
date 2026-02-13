@@ -10,8 +10,13 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    permissions:
+      id-token: write
+      contents: read
+
     env:
-      AWS_REGION: il-central-1   
+      AWS_REGION: il-central-1
+      AWS_ROLE_NAME: GitHubActions-Terraform-Deploy # Replace with the role name you created
 
     steps:
       - name: Checkout
@@ -23,13 +28,12 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.AWS_ROLE_NAME }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
         run: terraform init -input=false
-        
+
       - name: Terraform Plan
         run: terraform plan -input=false -out=tfplan
 
