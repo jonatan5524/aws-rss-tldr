@@ -23,3 +23,4 @@ repos:
         args: ["--maxkb=1000"]
       - id: detect-private-key
       - id: detect-aws-credentials
+        args: ["--allow-missing-credentials"]
