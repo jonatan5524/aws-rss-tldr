@@ -199,8 +199,6 @@ a structured TLDR summary for each one.
 - 🏗️ **Service Overview:** Brief explanation of what this AWS service does and its primary use cases.
 - ⏳ **Before:** What was possible/limited before.
 - 🔄 **Now:** What changed.
-- 💡 **Why It Matters:** Why this update is useful in real-world AWS architecture, development, or operations.
-- 👥 **Impact:** Who benefits (e.g., enterprises, devs, security teams).
 - 🔗 **Link:** URL of the news article
 ---
 
