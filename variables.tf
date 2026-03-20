@@ -26,5 +26,5 @@ variable "ssm_gemini_api_key_name" {
 
 variable "gemini_model" {
   type    = string
-  default = "gemini-3.1-flash"
+  default = "gemini-flash-latest"
 }
