@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 import feedparser
-import google.generativeai as genai
+from google import genai
 import boto3
 from datetime import datetime, timedelta
 
@@ -177,9 +177,7 @@ def lambda_handler(event, context):
         # --- Step 2: Summarize with Gemini
         try:
             # Configure Gemini
-            genai.configure(api_key=get_secret(SSM_GEMINI_API_KEY))
-            model = genai.GenerativeModel(GEMINI_MODEL)
-
+            client = genai.Client(api_key=get_secret(SSM_GEMINI_API_KEY))
             aws_news_prompt = """
 You are an expert AWS news assistant. I will provide AWS RSS news links, and you will return
 a structured TLDR summary for each one.
@@ -210,7 +208,10 @@ a structured TLDR summary for each one.
 - Don't just copy AWS marketing text — provide a *useful technical TLDR*.
 """
 
-            response = model.generate_content(aws_news_prompt + "\n\nHere are the news links:\n" + "\n".join(rss_links))
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=aws_news_prompt + "\n\nHere are the news links:\n" + "\n".join(rss_links)
+            )
             summary = response.text
         except Exception as e:
             logger.error(f"Gemini summarization failed: {e}")
