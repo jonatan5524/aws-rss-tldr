@@ -117,7 +117,7 @@ resource "aws_lambda_function" "fn" {
   handler       = "handler.lambda_handler"
   runtime       = "python3.12"
   filename      = local.archive_path
-  timeout       = 60
+  timeout       = 120
   memory_size   = 256
 
   environment {

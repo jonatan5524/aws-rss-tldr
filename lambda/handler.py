@@ -1,10 +1,19 @@
 import os
+import time
 import logging
 import requests
 import feedparser
 from google import genai
+from google.genai import errors as genai_errors
 import boto3
 from datetime import datetime, timedelta
+
+# Gemini calls can transiently fail with 503 (model overloaded) or
+# 429 (rate limited). Retry those with exponential backoff instead of
+# dropping the whole daily digest on a momentary capacity blip.
+GEMINI_RETRYABLE_STATUS = {429, 503}
+GEMINI_MAX_ATTEMPTS = 5
+GEMINI_BACKOFF_BASE_SECONDS = 2
 
 # Configure logging
 logger = logging.getLogger()
@@ -142,6 +151,28 @@ def send_to_telegram(summary: str):
 def get_secret(name):
     return ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
 
+
+def generate_summary_with_retry(client, model, contents):
+    """Call Gemini, retrying transient overload/rate-limit errors with backoff."""
+    last_exc = None
+    for attempt in range(1, GEMINI_MAX_ATTEMPTS + 1):
+        try:
+            response = client.models.generate_content(model=model, contents=contents)
+            return response.text
+        except genai_errors.APIError as e:
+            status = getattr(e, "code", None) or getattr(e, "status_code", None)
+            if status not in GEMINI_RETRYABLE_STATUS or attempt == GEMINI_MAX_ATTEMPTS:
+                raise
+            last_exc = e
+            sleep_seconds = GEMINI_BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
+            logger.warning(
+                f"Gemini call failed (status {status}, attempt {attempt}/{GEMINI_MAX_ATTEMPTS}); "
+                f"retrying in {sleep_seconds}s"
+            )
+            time.sleep(sleep_seconds)
+    # Should be unreachable, but re-raise the last error defensively.
+    raise last_exc
+
 def lambda_handler(event, context):
     try:
 
@@ -208,11 +239,11 @@ a structured TLDR summary for each one.
 - Don't just copy AWS marketing text — provide a *useful technical TLDR*.
 """
 
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=aws_news_prompt + "\n\nHere are the news links:\n" + "\n".join(rss_links)
+            summary = generate_summary_with_retry(
+                client,
+                GEMINI_MODEL,
+                aws_news_prompt + "\n\nHere are the news links:\n" + "\n".join(rss_links),
             )
-            summary = response.text
         except Exception as e:
             logger.error(f"Gemini summarization failed: {e}")
             return {"statusCode": 500, "body": "Gemini error"}
