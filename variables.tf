@@ -18,13 +18,24 @@ variable "ssm_telegram_chat_id" {
   default = "telegram_chat_id"
 }
 
-variable "ssm_gemini_api_key_name" {
+variable "ssm_openrouter_api_key_name" {
   type    = string
-  default = "gemini_api_key"
+  default = "openrouter_api_key"
 }
 
-
-variable "gemini_model" {
+variable "primary_model" {
   type    = string
-  default = "gemini-flash-latest"
+  default = "google/gemma-4-31b-it:free"
+}
+
+# Tried in order (via OpenRouter's `models` fallback array) if the primary
+# model is unavailable. Free-tier model availability rotates over time --
+# check current options at https://openrouter.ai/models before relying on
+# these defaults.
+variable "fallback_models" {
+  type = list(string)
+  default = [
+    "nvidia/nemotron-3.5-lightning:free",
+    "baidu/ernie-5.5-flash-preview:free",
+  ]
 }
