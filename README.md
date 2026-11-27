@@ -1,6 +1,6 @@
 # AWS RSS TL;DR
 
-A serverless bot that fetches AWS news from RSS, summarizes with Gemini AI, and posts to Telegram.
+A serverless bot that fetches AWS news from RSS, summarizes it via OpenRouter, and posts to Telegram.
 
 📢 **Live Channel:** [https://t.me/awsmewstldr](https://t.me/awsmewstldr)
 
@@ -9,7 +9,7 @@ A serverless bot that fetches AWS news from RSS, summarizes with Gemini AI, and 
 - **AWS Lambda** - Runs daily to fetch and summarize news
 - **EventBridge** - Schedules daily execution
 - **DynamoDB** - Stores processed articles
-- **Gemini AI** - Generates summaries
+- **OpenRouter** - Generates summaries, with model/provider fallback on capacity errors
 - **Telegram Bot** - Delivers summaries
 
 ## Prerequisites
@@ -17,14 +17,20 @@ A serverless bot that fetches AWS news from RSS, summarizes with Gemini AI, and 
 - AWS Account
 - Terraform >= 1.6.0
 - Telegram Bot Token (from [@BotFather](https://t.me/botfather))
-- Gemini API Key
+- OpenRouter API Key (from [openrouter.ai](https://openrouter.ai/keys))
 
 ## Setup
 
-1. **Create SSM Parameters** in AWS Console:
-   - `/aws-news-tldr/telegram_bot_token`
-   - `/aws-news-tldr/telegram_chat_id`
-   - `/aws-news-tldr/gemini_api_key`
+1. **Create SSM Parameters** in AWS Console (these are the bare parameter names
+   Terraform looks up via `variables.tf` — no path prefix):
+   - `telegram_bot_token`
+   - `telegram_chat_id`
+   - `openrouter_api_key` (type `SecureString`)
+
+   The default model and fallback models (`variables.tf`) are free-tier OpenRouter
+   models as of the last update — free-tier availability rotates, so check
+   [openrouter.ai/models](https://openrouter.ai/models) and override `primary_model`/
+   `fallback_models` if needed.
 
 2. **Create S3 bucket** for Terraform state:
    ```bash

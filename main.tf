@@ -59,7 +59,7 @@ resource "aws_iam_policy" "lambda_policy" {
         Effect = "Allow"
         Action = ["ssm:GetParameter"]
         Resource = [
-          "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.ssm_gemini_api_key_name}",
+          "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.ssm_openrouter_api_key_name}",
           "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.ssm_telegram_bot_token}",
           "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.ssm_telegram_chat_id}",
         ]
@@ -117,16 +117,17 @@ resource "aws_lambda_function" "fn" {
   handler       = "handler.lambda_handler"
   runtime       = "python3.12"
   filename      = local.archive_path
-  timeout       = 120
+  timeout       = 600
   memory_size   = 256
 
   environment {
     variables = {
-      RSS_URL                 = local.rss_url
-      GEMINI_MODEL            = var.gemini_model
-      SSM_GEMINI_API_KEY_NAME = var.ssm_gemini_api_key_name
-      SSM_TELEGRAM_BOT_TOKEN  = var.ssm_telegram_bot_token
-      SSM_TELEGRAM_CHAT_ID    = var.ssm_telegram_chat_id
+      RSS_URL                     = local.rss_url
+      PRIMARY_MODEL               = var.primary_model
+      FALLBACK_MODELS             = join(",", var.fallback_models)
+      SSM_OPENROUTER_API_KEY_NAME = var.ssm_openrouter_api_key_name
+      SSM_TELEGRAM_BOT_TOKEN      = var.ssm_telegram_bot_token
+      SSM_TELEGRAM_CHAT_ID        = var.ssm_telegram_chat_id
     }
   }
 
